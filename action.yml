@@ -15,6 +15,9 @@ inputs:
   commit-title:
     description: 'Title for the squashed commit. Defaults to the PR title.'
     default: ${{ github.event.pull_request.title }}
+  reset-workflows:
+    description: 'If true, restore .github/workflows from base before commit. Use this when the trigger commit deleted other workflow files to keep them quiet. WARNING: any genuine workflow-file edits in the PR are clobbered.'
+    default: 'false'
 
 runs:
   using: composite
@@ -42,17 +45,25 @@ runs:
         fi
         echo "path=$path" >> "$GITHUB_OUTPUT"
 
-    - name: Pre-flight - skip if only the workflow file differs from base
+    - name: Pre-flight - skip if no real changes vs base
       id: precheck
       shell: bash
       env:
         BASE: ${{ github.event.pull_request.base.ref }}
         WORKFLOW_PATH: ${{ steps.resolve.outputs.path }}
+        RESET_WORKFLOWS: ${{ inputs.reset-workflows }}
       run: |
         set -euo pipefail
         git fetch --no-tags origin "$BASE"
-        if git diff --quiet "origin/$BASE..HEAD" -- ":!$WORKFLOW_PATH"; then
-          echo "Only $WORKFLOW_PATH differs from origin/$BASE; nothing to squash."
+        # Exclude paths that won't survive into the squash: just sign.yml normally,
+        # the whole .github/workflows tree when reset-workflows is on.
+        if [ "$RESET_WORKFLOWS" = "true" ]; then
+          exclude=':!.github/workflows'
+        else
+          exclude=":!$WORKFLOW_PATH"
+        fi
+        if git diff --quiet "origin/$BASE..HEAD" -- "$exclude"; then
+          echo "Nothing to squash beyond $exclude."
           echo "skip=true" >> "$GITHUB_OUTPUT"
         fi
 
@@ -72,6 +83,7 @@ runs:
         BASE: ${{ github.event.pull_request.base.ref }}
         TITLE: ${{ inputs.commit-title }}
         WORKFLOW_PATH: ${{ steps.resolve.outputs.path }}
+        RESET_WORKFLOWS: ${{ inputs.reset-workflows }}
       run: |
         set -euo pipefail
 
@@ -84,6 +96,14 @@ runs:
           | sort -u)
 
         git reset --soft "origin/$BASE"
+
+        # Restore .github/workflows from base, replacing any deletions/edits the
+        # trigger commit made there. Skipped if base has no workflows directory.
+        if [ "$RESET_WORKFLOWS" = "true" ] \
+            && git cat-file -e "origin/$BASE":.github/workflows 2>/dev/null; then
+          git checkout "origin/$BASE" -- .github/workflows
+        fi
+
         git rm --cached -f "$WORKFLOW_PATH"
 
         # Two -m args render as separate paragraphs (blank line between).
