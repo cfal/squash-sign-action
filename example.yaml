@@ -1,0 +1,26 @@
+# Drop this file into your PR branch as .github/workflows/sign.yml and push.
+# The action squashes the PR diff into one Verified commit on top of base
+# (chunked into multiple commits if the diff exceeds GitHub's 45MB GraphQL
+# limit), self-destructing this file from the result. To re-sign later,
+# add the file back in a new push.
+#
+# Same-repo PRs only (GITHUB_TOKEN can't push to forks). The file must not
+# exist on the base branch.
+
+name: Squash and sign
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/sign.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sign:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: cfal/squash-sign-action@main
