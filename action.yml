@@ -90,10 +90,14 @@ runs:
         git config user.name  'github-actions[bot]'
         git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
+        # Collect each commit's author plus any existing Co-authored-by trailers,
+        # in chronological order, deduped without re-sorting.
         # `|| true` swallows grep's no-match exit when every commit was by the bot.
-        coauthors=$(git log "origin/$BASE..HEAD" --format='Co-authored-by: %an <%ae>' \
+        coauthors=$(git log --reverse "origin/$BASE..HEAD" \
+            --format='Co-authored-by: %an <%ae>%n%(trailers:key=Co-authored-by)' \
+          | grep -E '^Co-authored-by: ' \
           | { grep -vF 'github-actions[bot]' || true; } \
-          | sort -u)
+          | awk '!seen[$0]++')
 
         git reset --soft "origin/$BASE"
 
