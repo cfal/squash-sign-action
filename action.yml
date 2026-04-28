@@ -67,15 +67,6 @@ runs:
           echo "skip=true" >> "$GITHUB_OUTPUT"
         fi
 
-    - name: Wipe remote PR branch back to base
-      if: steps.precheck.outputs.skip != 'true'
-      shell: bash
-      env:
-        BASE: ${{ github.event.pull_request.base.ref }}
-        HEAD: ${{ github.event.pull_request.head.ref }}
-      # push-signed-commits requires merge-base(local, remote) == remote-head, so wipe first.
-      run: git push origin "+refs/remotes/origin/$BASE:refs/heads/$HEAD"
-
     - name: Squash PR into one local commit (drop the workflow file)
       if: steps.precheck.outputs.skip != 'true'
       shell: bash
@@ -125,3 +116,4 @@ runs:
         local_branch_name: ${{ github.event.pull_request.head.ref }}
         remote_branch_name: ${{ github.event.pull_request.head.ref }}
         include_source_hash: 'false'
+        force_reset_ref: 'true'
