@@ -1,9 +1,9 @@
 name: 'Squash and sign'
 description: |
-  Force-replaces a pull-request branch with one Verified commit (or a chunked
-  series, if the diff exceeds GitHub's 45MB GraphQL limit) derived from the PR's
-  diff vs base. The workflow file that triggered this action is removed from the
-  squash so the base branch never sees it. Same-repo PRs only.
+  Force-replaces a pull-request branch with Verified commits derived from the
+  PR's diff vs base. By default squashes everything into one commit; with
+  squash: 'false' produces one Verified commit per original PR commit. Same-repo
+  PRs only.
 
 inputs:
   github-token:
@@ -13,11 +13,14 @@ inputs:
     description: 'Path of the self-destructing workflow file to drop from the squash. Defaults to the path inferred from github.workflow_ref.'
     default: ''
   commit-title:
-    description: 'Title for the squashed commit. Defaults to the PR title.'
+    description: "Title for the squashed commit. Defaults to the PR title. Ignored when squash is 'false'."
     default: ${{ github.event.pull_request.title }}
   reset-workflows:
     description: 'If true, restore .github/workflows from base before commit. Use this when the trigger commit deleted other workflow files to keep them quiet. WARNING: any genuine workflow-file edits in the PR are clobbered.'
     default: 'false'
+  squash:
+    description: "If 'true' (default), squash all PR commits into a single Verified commit. If 'false', create one Verified commit per original PR commit, preserving authorship and message per commit."
+    default: 'true'
 
 runs:
   using: composite
@@ -68,7 +71,7 @@ runs:
         fi
 
     - name: Squash PR into one local commit (drop the workflow file)
-      if: steps.precheck.outputs.skip != 'true'
+      if: steps.precheck.outputs.skip != 'true' && inputs.squash == 'true'
       shell: bash
       env:
         BASE: ${{ github.event.pull_request.base.ref }}
@@ -117,3 +120,8 @@ runs:
         remote_branch_name: ${{ github.event.pull_request.head.ref }}
         include_source_hash: 'false'
         force_reset_ref: 'true'
+        # In squash mode the local commit already has the right tree, so no
+        # paths need filtering server-side. In non-squash mode push-signed-commits
+        # walks the original PR commits and we filter sign.yml (always) plus
+        # .github/workflows when reset-workflows is on.
+        exclude_paths: ${{ inputs.squash == 'false' && (inputs.reset-workflows == 'true' && '.github/workflows' || steps.resolve.outputs.path) || '' }}
