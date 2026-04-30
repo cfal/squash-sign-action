@@ -111,6 +111,44 @@ runs:
           git commit -m "$TITLE"
         fi
 
+    - name: Rewrite per-commit with Co-authored-by trailers (non-squash mode)
+      if: steps.precheck.outputs.skip != 'true' && inputs.squash == 'false'
+      shell: bash
+      env:
+        BASE: ${{ github.event.pull_request.base.ref }}
+        HEAD: ${{ github.event.pull_request.head.ref }}
+      run: |
+        set -euo pipefail
+
+        git config user.name  'github-actions[bot]'
+        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+        # createCommitOnBranch overrides the author to the API caller, so the only way
+        # to keep the original committer visible is via a Co-authored-by trailer in the
+        # message body. Walk each commit oldest-first, rebuild it on top of the
+        # previously-rebuilt commit, with interpret-trailers handling the trailer
+        # placement (no-op if an identical trailer is already there).
+        new_tip="$(git rev-parse "origin/$BASE")"
+
+        while read -r orig_commit; do
+          tree="$(git rev-parse "$orig_commit^{tree}")"
+          msg="$(git log -1 --format=%B "$orig_commit")"
+          author_name="$(git log -1 --format=%an "$orig_commit")"
+          author_email="$(git log -1 --format=%ae "$orig_commit")"
+
+          if [ "$author_name" != "github-actions[bot]" ]; then
+            msg="$(printf '%s\n' "$msg" | git interpret-trailers \
+              --if-exists addIfDifferent \
+              --trailer "Co-authored-by: $author_name <$author_email>")"
+          fi
+
+          new_tip="$(printf '%s' "$msg" | git commit-tree "$tree" -p "$new_tip" -F -)"
+        done < <(git rev-list --reverse "origin/$BASE..HEAD")
+
+        # Move the local branch ref to the rewritten chain. push-signed-commits walks
+        # local_branch_name from parent_ref, so this is what it'll see and push.
+        git update-ref "refs/heads/$HEAD" "$new_tip"
+
     - name: Push the squashed commit as Verified
       if: steps.precheck.outputs.skip != 'true'
       uses: cfal/push-signed-commits@main
