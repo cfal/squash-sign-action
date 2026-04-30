@@ -125,3 +125,7 @@ runs:
         # walks the original PR commits and we filter sign.yml (always) plus
         # .github/workflows when reset-workflows is on.
         exclude_paths: ${{ inputs.squash == 'false' && (inputs.reset-workflows == 'true' && '.github/workflows' || steps.resolve.outputs.path) || '' }}
+        # In non-squash mode local and remote point at the same commit, so
+        # merge-base would resolve to that commit and find no commits to push.
+        # Tell push-signed-commits to use the base branch as the fork point.
+        parent_ref: ${{ inputs.squash == 'false' && format('origin/{0}', github.event.pull_request.base.ref) || '' }}
