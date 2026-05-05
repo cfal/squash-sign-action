@@ -16,6 +16,12 @@ if ! git rev-parse --git-dir >/dev/null 2>&1; then
   exit 1
 fi
 
+# Always operate from the repo root so .github/workflows lands in the right place.
+# Captured into a var first so a failed rev-parse trips set -e instead of falling
+# through to a no-op `cd ""`.
+toplevel=$(git rev-parse --show-toplevel)
+cd "$toplevel"
+
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "Working tree has uncommitted tracked changes. Commit or stash first." >&2
   exit 1
